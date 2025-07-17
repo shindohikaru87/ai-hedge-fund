@@ -41,6 +41,18 @@ export const extractBaseAgentKey = (uniqueId: string): string => {
 
 // Define base node creation functions (non-agent nodes)
 const baseNodeTypeDefinitions: Record<string, NodeTypeDefinition> = {
+  "Portfolio Input": {
+    createNode: (position: { x: number, y: number }): AppNode => ({
+      id: `portfolio-start-node_${generateUniqueIdSuffix()}`,
+      type: "portfolio-start-node",
+      position,
+      data: {
+        name: "Portfolio Input",
+        description: "Start Node",
+        status: "Idle",
+      },
+    }),
+  },
   "Portfolio Manager": {
     createNode: (position: { x: number, y: number }): AppNode => ({
       id: `portfolio_manager_${generateUniqueIdSuffix()}`,
@@ -48,18 +60,18 @@ const baseNodeTypeDefinitions: Record<string, NodeTypeDefinition> = {
       position,
       data: {
         name: "Portfolio Manager",
-        description: "Start Node",
+        description: "End Node",
         status: "Idle",
       },
     }),
   },
-  "Stock Tickers": {
+  "Stock Input": {
     createNode: (position: { x: number, y: number }): AppNode => ({
-      id: `stock-tickers-node_${generateUniqueIdSuffix()}`,
-      type: "stock-tickers-node",
+      id: `stock-analyzer-node_${generateUniqueIdSuffix()}`,
+      type: "stock-analyzer-node",
       position,
       data: {
-        name: "Stock Tickers",
+        name: "Stock Input",
         description: "Start Node",
         status: "Idle",
       },

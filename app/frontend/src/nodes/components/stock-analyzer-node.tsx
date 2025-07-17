@@ -1,6 +1,5 @@
-import { ModelSelector } from '@/components/ui/llm-selector';
 import { useReactFlow, type NodeProps } from '@xyflow/react';
-import { List, Play, Square } from 'lucide-react';
+import { ChartLine, Play, Square } from 'lucide-react';
 import { useEffect } from 'react';
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -10,20 +9,19 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useFlowContext } from '@/contexts/flow-context';
 import { useNodeContext } from '@/contexts/node-context';
-import { getDefaultModel, getModels, LanguageModel } from '@/data/models';
 import { useFlowConnection } from '@/hooks/use-flow-connection';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
 import { useNodeState } from '@/hooks/use-node-state';
 import { formatKeyboardShortcut } from '@/lib/utils';
-import { type StockTickersNode } from '../types';
+import { type StockAnalyzerNode } from '../types';
 import { NodeShell } from './node-shell';
 
-export function StockTickersNode({
+export function StockAnalyzerNode({
   data,
   selected,
   id,
   isConnectable,
-}: NodeProps<StockTickersNode>) {
+}: NodeProps<StockAnalyzerNode>) {
   // Calculate default dates
   const today = new Date();
   const threeMonthsAgo = new Date(today);
@@ -31,8 +29,6 @@ export function StockTickersNode({
   
   // Use persistent state hooks
   const [tickers, setTickers] = useNodeState(id, 'tickers', 'AAPL,NVDA,TSLA');
-  const [selectedModel, setSelectedModel] = useNodeState<LanguageModel | null>(id, 'selectedModel', null);
-  const [availableModels, setAvailableModels] = useNodeState<LanguageModel[]>(id, 'availableModels', []);
   const [startDate, setStartDate] = useNodeState(id, 'startDate', threeMonthsAgo.toISOString().split('T')[0]);
   const [endDate, setEndDate] = useNodeState(id, 'endDate', today.toISOString().split('T')[0]);
   const [initialCash, setInitialCash] = useNodeState(id, 'initialCash', '100000');
@@ -74,29 +70,6 @@ export function StockTickersNode({
     ],
   });
   
-  // Load models and set default on mount
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        const [models, defaultModel] = await Promise.all([
-          getModels(),
-          getDefaultModel()
-        ]);
-        setAvailableModels(models);
-        
-        // Only set default model if no model is currently selected
-        if (!selectedModel && defaultModel) {
-          setSelectedModel(defaultModel);
-        }
-      } catch (error) {
-        console.error('Failed to load models:', error);
-        // Keep empty array and null as fallback
-      }
-    };
-    
-    loadModels();
-  }, []); // Remove selectedModel from dependencies to avoid infinite loop
-
   // Recover flow state when component mounts or flow changes
   useEffect(() => {
     if (flowId) {
@@ -139,13 +112,37 @@ export function StockTickersNode({
     const allNodes = getNodes();
     const allEdges = getEdges();
     
-    // Filter out non-agent nodes (keep only agent nodes, not the stock tickers node)
-    const agentNodes = allNodes.filter(node => node.id !== id);
+    // Find all nodes that are reachable from the stock-analyzer-node
+    const reachableNodes = new Set<string>();
+    const visited = new Set<string>();
     
-    // Filter edges to only include connections between nodes that actually exist in current flow
-    const currentNodeIds = new Set(allNodes.map(node => node.id));
+    // DFS to find all reachable nodes
+    const dfs = (nodeId: string) => {
+      if (visited.has(nodeId)) return;
+      visited.add(nodeId);
+      
+      // If this is not the stock-analyzer-node itself, add it to reachable nodes
+      if (nodeId !== id) {
+        reachableNodes.add(nodeId);
+      }
+      
+      // Find all outgoing edges from this node
+      const outgoingEdges = allEdges.filter(edge => edge.source === nodeId);
+      for (const edge of outgoingEdges) {
+        dfs(edge.target);
+      }
+    };
+    
+    // Start DFS from the stock-analyzer-node
+    dfs(id);
+    
+    // Filter nodes to only include reachable ones
+    const agentNodes = allNodes.filter(node => reachableNodes.has(node.id));
+    
+    // Filter edges to only include connections between reachable nodes (plus the stock-analyzer-node)
+    const reachableNodeIds = new Set([id, ...reachableNodes]);
     const validEdges = allEdges.filter(edge => 
-      currentNodeIds.has(edge.source) && currentNodeIds.has(edge.target)
+      reachableNodeIds.has(edge.source) && reachableNodeIds.has(edge.target)
     );
 
     // Collect agent models from all agent nodes
@@ -177,9 +174,9 @@ export function StockTickersNode({
       })),
       graph_edges: validEdges,
       agent_models: agentModels,
-      // Keep global model for backwards compatibility (will be removed later)
-      model_name: selectedModel?.model_name || undefined,
-      model_provider: selectedModel?.provider as any || undefined,
+      // No global model - each agent uses its own model or system default
+      model_name: undefined,
+      model_provider: undefined,
       start_date: startDate,
       end_date: endDate,
       initial_cash: parseFloat(initialCash) || 100000,
@@ -195,8 +192,8 @@ export function StockTickersNode({
         id={id}
         selected={selected}
         isConnectable={isConnectable}
-        icon={<List className="h-5 w-5" />}
-        name={data.name || "Stock Tickers"}
+        icon={<ChartLine className="h-5 w-5" />}
+        name={data.name || "Stock Analyzer"}
         description={data.description}
         hasLeftHandle={false}
       >
@@ -253,17 +250,7 @@ export function StockTickersNode({
                   />
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <div className="text-subtitle text-primary flex items-center gap-1">
-                  Model
-                </div>
-                <ModelSelector
-                  models={availableModels}
-                  value={selectedModel?.model_name || ""}
-                  onChange={setSelectedModel}
-                  placeholder="Select a model..."
-                />
-              </div>
+
               <Accordion type="single" collapsible>
                 <AccordionItem value="advanced" className="border-none">
                   <AccordionTrigger className="!text-subtitle text-primary">
